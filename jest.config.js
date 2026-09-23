@@ -14,4 +14,5 @@ export default {
         ],
     },
     setupFiles: ['<rootDir>/.jest/setEnvVars.js'],
+    modulePathIgnorePatterns: ['<rootDir>/.kilo/'],
 }; 
