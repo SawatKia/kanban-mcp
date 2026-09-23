@@ -1,0 +1,255 @@
+# LLM Guide: Kanban Development with Consolidated Tools
+
+This guide provides instructions for LLMs on effectively using consolidated Kanban tools when assisting with development tasks.
+
+## 1. User-First Approach
+
+- **Prioritize user requests over Kanban operations**
+- Only use Kanban tools when explicitly requested or after completing primary task
+- Signal transitions clearly: "Now that we've addressed your question, I'll update the Kanban board..."
+
+## 2. Board Analysis & Navigation
+
+### 2.1 Board Structure Assessment & "Done" List Resolution
+- **Existing Board**: Query board lists and identify/select which list represents the **"Done"** state (e.g. "Done", "Completed", "Finished", "Closed").
+```
+mcp_kanban_project_board_manager({ action: "get_projects" })
+mcp_kanban_project_board_manager({ action: "get_boards", projectId: "proj_id" })
+mcp_kanban_list_manager({ action: "get_all", boardId: "board_id" })
+```
+- **New Board**: When creating/checking a new board, ensure a **"Done"** list exists. If not, create it:
+```
+mcp_kanban_list_manager({
+  action: "create",
+  boardId: "board_id",
+  name: "Done",
+  position: 393210
+})
+```
+
+### 2.2 Card Inventory
+```
+mcp_kanban_card_manager({ action: "get_all", listId: "list_id" })
+mcp_kanban_label_manager({ action: "get_all", boardId: "board_id" })
+```
+
+### 2.3 Query & Label Discovery (Smart Search)
+```
+// 1. Discover all labels with task counts and state breakdowns
+scheduler_list_labels({})
+// or mcp_kanban_list_labels({ boardId: "board_id" })
+
+// 2. Query ready tasks with specific labels
+scheduler_query_tasks({
+  labels: ["backend", "auth"],
+  labelMatchMode: "all",
+  isReady: true
+})
+
+// 3. Search tasks by keyword, state, and role
+scheduler_query_tasks({
+  text: "login",
+  state: "TODO",
+  assignedPosition: "CODER"
+})
+```
+
+## 3. Workflow Management
+
+### 3.1 Card Selection
+```
+// Move card to "In Progress" list
+mcp_kanban_card_manager({
+  action: "move",
+  id: "card_id",
+  listId: "in_progress_list_id",
+  position: 0
+})
+
+// Add starting comment
+mcp_kanban_comment_manager({
+  action: "create",
+  cardId: "card_id",
+  text: "▶️ Starting work on this card."
+})
+
+// Start timer
+mcp_kanban_stopwatch({ action: "start", id: "card_id" })
+```
+
+### 3.2 Task Implementation (task ∈ task-list (checklist) ∈ card)
+- Hierarchy: Card contains multiple **task-lists** (Checklist 1, Checklist 2...). Each task-list contains multiple **tasks** (checklist items / sub-tasks).
+- A **task** is an individual checklist item with a name and an `isCompleted` boolean flag (`isCompleted: true / false`).
+- When a task depends on or references another card, include the referenced card ID in the task description, e.g. `"Implement auth module [referenced_card_id]"`.
+```
+// Get all tasks (checklist items) for a card
+mcp_kanban_task_manager({ action: "get_all", cardId: "card_id" })
+
+// Complete a specific task (checklist item: isCompleted = true)
+mcp_kanban_task_manager({ action: "complete_task", id: "task_id" })
+
+// Add new task (checklist item, referencing another card if applicable)
+mcp_kanban_task_manager({
+  action: "create",
+  cardId: "card_id",
+  name: "Dependent task description [ref_card_id]"
+})
+```
+
+### 3.3 Dynamic Task Management
+```
+// Add single label to card
+mcp_kanban_label_manager({
+  action: "add_to_card",
+  cardId: "card_id",
+  labelId: "blocked_label_id"
+})
+
+// Or add multiple labels to card at once
+mcp_kanban_label_manager({
+  action: "add_to_card",
+  cardId: "card_id",
+  labelIds: ["label_id_1", "label_id_2"]
+})
+```
+
+## 4. Card Lifecycle Management & Card-Referencing Task Sync
+
+### 4.1 Moving Cards to Testing / Review
+```
+// Move to "Testing" list
+mcp_kanban_card_manager({
+  action: "move",
+  id: "card_id",
+  listId: "testing_list_id",
+  position: 0
+})
+
+// Stop timer
+mcp_kanban_stopwatch({ action: "stop", id: "card_id" })
+
+// Add implementation summary
+mcp_kanban_comment_manager({
+  action: "create",
+  cardId: "card_id",
+  text: "🔍 Ready for review\n\nSummary of changes:\n- [changes]"
+})
+```
+
+### 4.2 Moving Cards to Done & Auto-Completing Referencing Tasks
+- When a card reaches the **Done** list (or is completed):
+  1. Move card to the resolved "Done" list.
+  2. Any task on other cards referencing this card (`[card_id]`) must be updated to `isCompleted: true`.
+```
+// Move card to Done list
+mcp_kanban_card_manager({
+  action: "move",
+  id: "card_id",
+  listId: "done_list_id",
+  position: 0
+})
+
+// Sync all tasks referencing this completed card
+mcp_kanban_task_manager({
+  action: "sync_referenced_card",
+  cardId: "card_id",
+  boardId: "board_id"
+})
+```
+
+### 4.3 Handling Feedback
+```
+// Get comments
+mcp_kanban_comment_manager({ action: "get_all", cardId: "card_id" })
+
+// Move back to "In Progress" if needed
+mcp_kanban_card_manager({
+  action: "move",
+  id: "card_id",
+  listId: "in_progress_list_id",
+  position: 0
+})
+```
+
+## 5. Communication Standards
+
+### 5.1 Label Management
+```
+// Create new label
+mcp_kanban_label_manager({
+  action: "create",
+  boardId: "board_id",
+  name: "Bug",
+  color: "berry-red"
+})
+```
+
+### 5.2 Comment Templates
+
+1. **Starting Work**:
+   ```
+   ▶️ Starting work on this card.
+   Initial assessment: [brief analysis]
+   Planned approach: [implementation plan]
+   ```
+
+2. **Task Completion**:
+   ```
+   ✅ Completed task: [task name]
+   Implementation details: [what was done]
+   ```
+
+3. **Implementation Summary**:
+   ```
+   🔍 Ready for review
+
+   Summary of changes:
+   - [major change 1]
+   - [major change 2]
+
+   Testing considerations:
+   - [area to test 1]
+   ```
+
+## 6. Progress Tracking
+
+```
+// Get stopwatch status
+mcp_kanban_stopwatch({ action: "get", id: "card_id" })
+
+// Get board summary
+mcp_kanban_project_board_manager({
+  action: "get_board_summary",
+  boardId: "board_id",
+  includeTaskDetails: true,
+  includeComments: true
+})
+```
+
+## 7. Workflow Checklist
+
+1. **Initial Analysis & Done List Resolution**
+   - [ ] Retrieve board structure
+   - [ ] Identify / select which list is "Done" (for existing board) or create "Done" list (for new board)
+   - [ ] Identify priority cards
+
+2. **Card Selection**
+   - [ ] Move card to "In Progress"
+   - [ ] Start stopwatch
+   - [ ] Add starting comment
+
+3. **Task Implementation**
+   - [ ] Complete tasks sequentially
+   - [ ] Reference dependent card IDs in task names if applicable
+   - [ ] Document progress
+
+4. **Completion & Sync**
+   - [ ] Move card to "Done" list
+   - [ ] Stop stopwatch
+   - [ ] Sync/update any tasks referencing this completed card (`isCompleted = true`)
+   - [ ] Add completion summary
+
+5. **Feedback Handling**
+   - [ ] Process feedback
+   - [ ] Create tasks for changes
+   - [ ] Update status
