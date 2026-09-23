@@ -51,25 +51,6 @@ services:
       - "-c"
       - "shared_buffers=256MB"
 
-  mcp-server:
-    build: .
-    image: kanban-mcp:latest
-    container_name: kanban-mcp-server
-    restart: unless-stopped
-    ports:
-      - "${MCP_KANBAN_PORT:-3008}:3008"
-    stdin_open: true
-    tty: true
-    environment:
-      - SERVER_PORT=${MCP_KANBAN_PORT:-3008}
-      - PLANKA_BASE_URL=http://kanban:1337
-      - PLANKA_AGENT_EMAIL=${PLANKA_ADMIN_EMAIL}
-      - PLANKA_AGENT_PASSWORD=${PLANKA_ADMIN_PASSWORD}
-    depends_on:
-      - kanban
-    volumes:
-      - mcp-attachments:/app/attachments
-
 volumes:
   kanban-db:
     name: kanban-db-persistent
@@ -77,4 +58,3 @@ volumes:
   kanban-user-avatars:
   kanban-project-background-images:
   kanban-attachments:
-  mcp-attachments:

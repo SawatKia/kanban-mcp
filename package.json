@@ -4,8 +4,6 @@
   "description": "MCP server for kanban board",
   "license": "MIT",
   "author": "Brad Risse",
-  "homepage": "https://github.com/bradrisse/mcp-kanban",
-  "bugs": "https://github.com/bradrisse/mcp-kanban/issues",
   "type": "module",
   "bin": {
     "mcp-server-kanban": "dist/index.js"
@@ -16,17 +14,24 @@
   "scripts": {
     "build": "tsc && shx chmod +x dist/*.js",
     "watch": "tsc --watch",
-    "up": "docker compose --env-file .env up -d",
+    "up": "docker compose --env-file .env up -d --build",
+    "up:prebuilt": "docker compose -f docker-compose.prebuilt.yml --env-file .env up -d",
     "down": "docker compose down",
+    "down:prebuilt": "docker compose -f docker-compose.prebuilt.yml down",
     "restart": "docker compose --env-file .env restart",
+    "build:ui": "docker compose build kanban",
     "build-docker": "npm run build && docker build -t mcp-kanban:latest .",
+    "db:backup": "node scripts/backup.js",
+    "db:schedule-backup": "powershell -ExecutionPolicy Bypass -File ./scripts/schedule-backup.ps1",
+    "start": "node dist/index.js",
     "start-node": "node dist/index.js",
     "inspector": "SERVER_PORT=3008 CLIENT_PORT=5174 npx -y @modelcontextprotocol/inspector node dist/index.js",
-    "inspector:demo": "SERVER_PORT=3008 CLIENT_PORT=5174 npx -y @modelcontextprotocol/inspector -e PLANKA_BASE_URL=http://localhost:3000 -e PLANKA_ADMIN_ID=1460688047300412417 -e PLANKA_AGENT_EMAIL=claude-sic-score-front-end@cursor.com -e PLANKA_AGENT_PASSWORD=supersupersecre1 node dist/index.js",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch='**/tests/**/*.test.ts'"
+    "inspector:demo": "SERVER_PORT=3008 CLIENT_PORT=5174 npx -y @modelcontextprotocol/inspector node dist/index.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch='**/tests/**/*.test.ts' --testPathIgnorePatterns='integration\\.test\\.ts$'",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch='**/tests/integration.test.ts'"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.6.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@types/node": "^22",
     "@types/node-fetch": "^2.6.12",
     "node-fetch": "^3.3.2",

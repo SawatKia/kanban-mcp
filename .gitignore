@@ -1,5 +1,77 @@
-dist/
+# Dependencies
 node_modules/
+
+# Build / generated output
+dist/
+build/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Local databases, backups, exports and runtime data
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.backup
+*.dump
+*.sql.gz
+*.tar.gz
+kanban_backup/
+backups/
+backup/
+exports/
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS / editor / local IDE configuration
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.cursor/
 .cursorrules
-.cursor/mcp.json
-.cursor
+.kilo/
+.serena/
+
+# Local MCP / agent configuration and credentials
+.mcp.json
+mcp.json
+**/mcp.json
+**/.mcp.json
+
+# Local agent state / instructions that may contain machine-specific or private data
+.agents/
+.gemini/
+
+# Test artifacts
+.jest/
+*.lcov
+
+# Docker local overrides / secrets
+.env.docker
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
