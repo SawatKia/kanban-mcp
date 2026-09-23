@@ -3,7 +3,11 @@ import { getCard, moveCard } from "../operations/cards.js";
 import { createComment } from "../operations/comments.js";
 import { getLists } from "../operations/lists.js";
 import { getBoard } from "../operations/boards.js";
-import { getTask, updateTask } from "../operations/tasks.js";
+import {
+    getTask,
+    updateTask,
+    syncReferencedTasksOnCardDone,
+} from "../operations/tasks.js";
 
 /**
  * Zod schema for the workflow action parameters
@@ -174,6 +178,19 @@ export async function performWorkflowAction(params: WorkflowActionParams) {
             text: actionComment || "",
         });
 
+        // If moved to done, synchronize any tasks across the board that reference this card
+        let syncedTasks: any[] = [];
+        if (action === "move_to_done") {
+            try {
+                syncedTasks = await syncReferencedTasksOnCardDone(
+                    cardId,
+                    boardId
+                );
+            } catch (syncErr) {
+                console.error("Error syncing referenced tasks:", syncErr);
+            }
+        }
+
         return {
             success: true,
             action,
@@ -182,6 +199,7 @@ export async function performWorkflowAction(params: WorkflowActionParams) {
             listName: targetList.name,
             card: updatedCard,
             comment: newComment,
+            syncedTasks,
         };
     } catch (error) {
         console.error(`Error in performWorkflowAction (${action}):`, error);

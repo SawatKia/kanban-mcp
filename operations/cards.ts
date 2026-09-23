@@ -22,7 +22,9 @@ export const CreateCardSchema = z.object({
     listId: z.string().describe("List ID"),
     name: z.string().describe("Card name"),
     description: z.string().optional().describe("Card description"),
-    position: z.number().optional().describe("Card position (default: 65535)"),
+    position: z.number().optional().describe(
+        "Card vertical position/order within the list column (default: 65535). Lower numbers (e.g. 0, 1000, 65535) place the card higher up / at the top of the column, while higher numbers (e.g. 131070, 196605) place it lower down / towards the bottom.",
+    ),
 });
 
 /**
@@ -54,7 +56,9 @@ export const UpdateCardSchema = z.object({
     id: z.string().describe("Card ID"),
     name: z.string().optional().describe("Card name"),
     description: z.string().optional().describe("Card description"),
-    position: z.number().optional().describe("Card position"),
+    position: z.number().optional().describe(
+        "Card vertical position/order within the list column. Lower numbers (e.g. 0, 1000, 65535) place the card higher up / at the top, while higher numbers place it lower down / towards the bottom.",
+    ),
     dueDate: z.string().optional().describe("Card due date (ISO format)"),
     isCompleted: z.boolean().optional().describe(
         "Whether the card is completed",
@@ -65,14 +69,14 @@ export const MoveCardSchema = z.object({
     id: z.string().describe("Card ID"),
     listId: z.string().describe("Target list ID"),
     position: z.number().optional().describe(
-        "Card position in the target list (default: 65535)",
+        "Card vertical position in the target list column (default: 65535). Lower numbers = higher up / top, higher numbers = lower down / bottom.",
     ),
 });
 
 export const DuplicateCardSchema = z.object({
     id: z.string().describe("Card ID to duplicate"),
     position: z.number().optional().describe(
-        "Position for the duplicated card (default: 65535)",
+        "Position for the duplicated card (default: 65535). Lower numbers = higher up / top, higher numbers = lower down / bottom.",
     ),
 });
 
@@ -136,15 +140,19 @@ const CardResponseSchema = z.object({
  */
 export async function createCard(options: CreateCardOptions) {
     try {
+        const body: Record<string, any> = {
+            name: options.name,
+            position: options.position,
+            type: "project",
+        };
+        if (options.description && options.description.trim()) {
+            body.description = options.description;
+        }
         const response = await plankaRequest(
             `/api/lists/${options.listId}/cards`,
             {
                 method: "POST",
-                body: {
-                    name: options.name,
-                    description: options.description,
-                    position: options.position,
-                },
+                body,
             },
         );
         const parsedResponse = CardResponseSchema.parse(response);

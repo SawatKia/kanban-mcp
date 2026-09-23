@@ -100,6 +100,16 @@ export const AddLabelToCardSchema = z.object({
 });
 
 /**
+ * Schema for adding multiple labels to a card
+ * @property {string} cardId - The ID of the card to add labels to
+ * @property {string[]} labelIds - Array of label IDs to add to the card
+ */
+export const AddLabelsToCardSchema = z.object({
+    cardId: z.string().describe("Card ID"),
+    labelIds: z.array(z.string()).describe("Array of Label IDs"),
+});
+
+/**
  * Schema for removing a label from a card
  * @property {string} cardId - The ID of the card to remove the label from
  * @property {string} labelId - The ID of the label to remove from the card
@@ -107,6 +117,16 @@ export const AddLabelToCardSchema = z.object({
 export const RemoveLabelFromCardSchema = z.object({
     cardId: z.string().describe("Card ID"),
     labelId: z.string().describe("Label ID"),
+});
+
+/**
+ * Schema for removing multiple labels from a card
+ * @property {string} cardId - The ID of the card to remove labels from
+ * @property {string[]} labelIds - Array of label IDs to remove from the card
+ */
+export const RemoveLabelsFromCardSchema = z.object({
+    cardId: z.string().describe("Card ID"),
+    labelIds: z.array(z.string()).describe("Array of Label IDs"),
 });
 
 // Type exports
@@ -126,10 +146,22 @@ export type UpdateLabelOptions = z.infer<typeof UpdateLabelSchema>;
 export type AddLabelToCardOptions = z.infer<typeof AddLabelToCardSchema>;
 
 /**
+ * Type definition for adding multiple labels to a card options
+ */
+export type AddLabelsToCardOptions = z.infer<typeof AddLabelsToCardSchema>;
+
+/**
  * Type definition for removing a label from a card options
  */
 export type RemoveLabelFromCardOptions = z.infer<
     typeof RemoveLabelFromCardSchema
+>;
+
+/**
+ * Type definition for removing multiple labels from a card options
+ */
+export type RemoveLabelsFromCardOptions = z.infer<
+    typeof RemoveLabelsFromCardSchema
 >;
 
 // Response schemas
@@ -283,9 +315,8 @@ export async function deleteLabel(id: string) {
  */
 export async function addLabelToCard(cardId: string, labelId: string) {
     try {
-        // The correct endpoint is /api/cards/{cardId}/labels with labelId in the body
         await plankaRequest(
-            `/api/cards/${cardId}/labels`,
+            `/api/cards/${cardId}/card-labels`,
             {
                 method: "POST",
                 body: {
@@ -313,9 +344,8 @@ export async function addLabelToCard(cardId: string, labelId: string) {
  */
 export async function removeLabelFromCard(cardId: string, labelId: string) {
     try {
-        // The correct endpoint is /api/cards/{cardId}/labels/{labelId}
         await plankaRequest(
-            `/api/cards/${cardId}/labels/${labelId}`,
+            `/api/cards/${cardId}/card-labels/${labelId}`,
             {
                 method: "DELETE",
             },
@@ -325,6 +355,87 @@ export async function removeLabelFromCard(cardId: string, labelId: string) {
     } catch (error) {
         throw new Error(
             `Failed to remove label from card: ${
+                error instanceof Error ? error.message : String(error)
+            }`,
+        );
+    }
+}
+
+/**
+ * Adds multiple labels to a card
+ *
+ * @param {string} cardId - The ID of the card to add labels to
+ * @param {string[]} labelIds - Array of label IDs to add to the card
+ * @returns {Promise<object>} Result summarizing added labels and any errors
+ */
+export async function addLabelsToCard(cardId: string, labelIds: string[]) {
+    try {
+        const results: Array<{ labelId: string; success: boolean; error?: string }> = [];
+        for (const labelId of labelIds) {
+            try {
+                await plankaRequest(`/api/cards/${cardId}/card-labels`, {
+                    method: "POST",
+                    body: { labelId },
+                });
+                results.push({ labelId, success: true });
+            } catch (err) {
+                results.push({
+                    labelId,
+                    success: false,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        }
+        const addedCount = results.filter((r) => r.success).length;
+        return {
+            success: addedCount > 0 || labelIds.length === 0,
+            total: labelIds.length,
+            added: addedCount,
+            results,
+        };
+    } catch (error) {
+        throw new Error(
+            `Failed to add labels to card: ${
+                error instanceof Error ? error.message : String(error)
+            }`,
+        );
+    }
+}
+
+/**
+ * Removes multiple labels from a card
+ *
+ * @param {string} cardId - The ID of the card to remove labels from
+ * @param {string[]} labelIds - Array of label IDs to remove from the card
+ * @returns {Promise<object>} Result summarizing removed labels and any errors
+ */
+export async function removeLabelsFromCard(cardId: string, labelIds: string[]) {
+    try {
+        const results: Array<{ labelId: string; success: boolean; error?: string }> = [];
+        for (const labelId of labelIds) {
+            try {
+                await plankaRequest(`/api/cards/${cardId}/card-labels/${labelId}`, {
+                    method: "DELETE",
+                });
+                results.push({ labelId, success: true });
+            } catch (err) {
+                results.push({
+                    labelId,
+                    success: false,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
+        }
+        const removedCount = results.filter((r) => r.success).length;
+        return {
+            success: removedCount > 0 || labelIds.length === 0,
+            total: labelIds.length,
+            removed: removedCount,
+            results,
+        };
+    } catch (error) {
+        throw new Error(
+            `Failed to remove labels from card: ${
                 error instanceof Error ? error.message : String(error)
             }`,
         );

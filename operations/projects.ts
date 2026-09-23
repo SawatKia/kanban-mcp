@@ -140,3 +140,49 @@ export async function getProject(id: string) {
         );
     }
 }
+
+/**
+ * Creates a new project
+ *
+ * @param {string} name - The name of the project to create
+ * @returns {Promise<object>} The created project
+ * @throws {Error} If creating the project fails
+ */
+export async function createProject(name: string) {
+    try {
+        const response = await plankaRequest("/api/projects", {
+            method: "POST",
+            body: { name },
+        });
+        const parsedResponse = ProjectResponseSchema.parse(response);
+        return parsedResponse.item;
+    } catch (error) {
+        throw new Error(
+            `Failed to create project: ${
+                error instanceof Error ? error.message : String(error)
+            }`,
+        );
+    }
+}
+
+/**
+ * Deletes a project by ID
+ *
+ * @param {string} id - The ID of the project to delete
+ * @returns {Promise<{success: boolean}>} Success indicator
+ * @throws {Error} If deleting the project fails
+ */
+export async function deleteProject(id: string) {
+    try {
+        await plankaRequest(`/api/projects/${id}`, {
+            method: "DELETE",
+        });
+        return { success: true };
+    } catch (error) {
+        throw new Error(
+            `Failed to delete project: ${
+                error instanceof Error ? error.message : String(error)
+            }`,
+        );
+    }
+}

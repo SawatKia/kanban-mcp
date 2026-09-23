@@ -408,7 +408,7 @@ describe("MCP Kanban Integration Tests", () => {
         text: commentText,
       });
       expect(result).toBeDefined();
-      expect(result.data.text).toBe(commentText);
+      expect(result.data!.text).toBe(commentText);
       commentId = result.id;
     });
 
@@ -422,7 +422,7 @@ describe("MCP Kanban Integration Tests", () => {
       const comment = allComments.find((c) => c.id === commentId);
       expect(comment).toBeDefined();
       expect(comment?.id).toBe(commentId);
-      expect(comment?.data.text).toBe(commentText);
+      expect(comment?.data?.text).toBe(commentText);
     });
 
     test("should update a comment", async () => {
@@ -432,7 +432,7 @@ describe("MCP Kanban Integration Tests", () => {
       });
       expect(result).toBeDefined();
       expect(result.id).toBe(commentId);
-      expect(result.data.text).toBe(updatedText);
+      expect(result.data!.text).toBe(updatedText);
     });
   });
 

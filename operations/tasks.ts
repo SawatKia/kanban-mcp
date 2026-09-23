@@ -1,25 +1,45 @@
 /**
  * @fileoverview Task operations for the MCP Kanban server
  *
- * This module provides functions for interacting with tasks in the Planka Kanban board,
- * including creating, retrieving, updating, and deleting tasks, as well as batch operations.
+ * This module provides functions for interacting with checklists (task-lists) and individual tasks (step-by-step checklist items)
+ * in the Planka Kanban board.
+ * Hierarchy: Board -> Board Column (List) -> Card -> Checklist (Task-List #1, #2...) -> Tasks (Individual checklist step items).
+ * A card can contain multiple checklists (task-lists), and each checklist contains multiple tasks/sub-tasks.
+ * Each task has an isCompleted boolean flag indicating whether it is done or pending.
  */
 
 import { z } from "zod";
 import { plankaRequest } from "../common/utils.js";
-import { PlankaTaskSchema } from "../common/types.js";
+import { PlankaTaskSchema, PlankaTaskListSchema } from "../common/types.js";
 
-// Schema definitions
 /**
- * Schema for creating a new task
- * @property {string} cardId - The ID of the card to create the task in
- * @property {string} name - The name of the task
- * @property {number} [position] - The position of the task in the card (default: 65535)
+ * Schema for creating a new checklist (task-list) for a card
+ * @property {string} cardId - The ID of the card to create the checklist in
+ * @property {string} name - The name of the checklist (default: "Checklist")
+ * @property {number} [position] - The position of the checklist (default: 65535)
+ */
+export const CreateChecklistSchema = z.object({
+    cardId: z.string().describe("Card ID to create the checklist in"),
+    name: z.string().describe("Checklist name (e.g. 'Checklist', 'Requirements', 'Deployment Steps')"),
+    position: z.number().optional().describe("Checklist position (default: 65535)"),
+});
+
+/**
+ * Schema for creating a new task (individual checklist step item)
+ * @property {string} [cardId] - The ID of the card containing the checklist
+ * @property {string} [taskListId] - The ID of the checklist (task-list) to create the task in
+ * @property {string} [checklistName] - Optional checklist name to add the task to (defaults to "Checklist" or existing checklist)
+ * @property {string} name - The name of the task (individual step / checklist item)
+ * @property {number} [position] - The position of the task in the checklist (default: 65535)
+ * @property {boolean} [isCompleted] - Whether the task is marked completed
  */
 export const CreateTaskSchema = z.object({
-    cardId: z.string().describe("Card ID"),
-    name: z.string().describe("Task name"),
-    position: z.number().optional().describe("Task position (default: 65535)"),
+    cardId: z.string().optional().describe("Card ID containing the checklist"),
+    taskListId: z.string().optional().describe("Checklist (Task-List) ID to create the task in"),
+    checklistName: z.string().optional().describe("Checklist name to add task to (default: 'Checklist')"),
+    name: z.string().describe("Task name (individual step / checklist item: task ∈ checklist ∈ card)"),
+    position: z.number().optional().describe("Task vertical position within checklist (default: 65535)"),
+    isCompleted: z.boolean().optional().describe("Whether the task is completed (true) or pending (false)"),
 });
 
 /**
@@ -27,7 +47,7 @@ export const CreateTaskSchema = z.object({
  * @property {Array<CreateTaskSchema>} tasks - Array of tasks to create
  */
 export const BatchCreateTasksSchema = z.object({
-    tasks: z.array(CreateTaskSchema).describe("Array of tasks to create"),
+    tasks: z.array(CreateTaskSchema).describe("Array of tasks (checklist / step items) to create"),
 });
 
 /**
@@ -35,7 +55,7 @@ export const BatchCreateTasksSchema = z.object({
  * @property {string} cardId - The ID of the card to get tasks from
  */
 export const GetTasksSchema = z.object({
-    cardId: z.string().describe("Card ID"),
+    cardId: z.string().describe("Card ID containing checklists and tasks"),
 });
 
 /**
@@ -44,7 +64,7 @@ export const GetTasksSchema = z.object({
  * @property {string} [cardId] - The ID of the card containing the task
  */
 export const GetTaskSchema = z.object({
-    id: z.string().describe("Task ID"),
+    id: z.string().describe("Task ID (individual checklist / step item ID)"),
     cardId: z.string().optional().describe("Card ID containing the task"),
 });
 
@@ -52,16 +72,16 @@ export const GetTaskSchema = z.object({
  * Schema for updating a task
  * @property {string} id - The ID of the task to update
  * @property {string} [name] - The new name for the task
- * @property {boolean} [isCompleted] - Whether the task is completed
+ * @property {boolean} [isCompleted] - Whether the task is completed (true) or pending (false)
  * @property {number} [position] - The new position for the task
  */
 export const UpdateTaskSchema = z.object({
-    id: z.string().describe("Task ID"),
-    name: z.string().optional().describe("Task name"),
+    id: z.string().describe("Task ID (individual checklist / step item ID)"),
+    name: z.string().optional().describe("Task name (individual checklist / step item name)"),
     isCompleted: z.boolean().optional().describe(
-        "Whether the task is completed",
+        "Whether the task (checklist / step item) is completed (true) or pending (false)",
     ),
-    position: z.number().optional().describe("Task position"),
+    position: z.number().optional().describe("Task vertical position within checklist"),
 });
 
 /**
@@ -69,23 +89,13 @@ export const UpdateTaskSchema = z.object({
  * @property {string} id - The ID of the task to delete
  */
 export const DeleteTaskSchema = z.object({
-    id: z.string().describe("Task ID"),
+    id: z.string().describe("Task ID (individual checklist / step item ID)"),
 });
 
 // Type exports
-/**
- * Type definition for task creation options
- */
+export type CreateChecklistOptions = z.infer<typeof CreateChecklistSchema>;
 export type CreateTaskOptions = z.infer<typeof CreateTaskSchema>;
-
-/**
- * Type definition for batch task creation options
- */
 export type BatchCreateTasksOptions = z.infer<typeof BatchCreateTasksSchema>;
-
-/**
- * Type definition for task update options
- */
 export type UpdateTaskOptions = z.infer<typeof UpdateTaskSchema>;
 
 // Response schemas
@@ -99,41 +109,145 @@ const TaskResponseSchema = z.object({
     included: z.record(z.any()).optional(),
 });
 
+const TaskListResponseSchema = z.object({
+    item: PlankaTaskListSchema,
+    included: z.record(z.any()).optional(),
+});
+
 // Map to store task ID to card ID mapping
 const taskCardIdMap: Record<string, string> = {};
 
-// Function implementations
 /**
- * Creates a new task for a card
+ * Retrieves all checklists (task-lists) for a specific card
  *
- * @param {object} params - The task creation parameters
- * @param {string} params.cardId - The ID of the card to create the task in
- * @param {string} params.name - The name of the new task
- * @param {number} params.position - The position of the task in the card
+ * @param {string} cardId - The ID of the card
+ * @returns {Promise<Array<object>>} Array of checklists on the card
+ */
+export async function getChecklists(cardId: string) {
+    try {
+        const response = await plankaRequest(`/api/cards/${cardId}`) as {
+            item: any;
+            included?: {
+                taskLists?: any[];
+            };
+        };
+        return response?.included?.taskLists || [];
+    } catch (error) {
+        console.error(`Error getting checklists for card ${cardId}:`, error);
+        return [];
+    }
+}
+
+/**
+ * Creates a new checklist (task-list) for a card
+ *
+ * @param {CreateChecklistOptions} params - Checklist parameters
+ * @returns {Promise<object>} The created checklist
+ */
+export async function createChecklist(params: CreateChecklistOptions) {
+    const { cardId, name, position = 65535 } = params;
+    const response = await plankaRequest(`/api/cards/${cardId}/task-lists`, {
+        method: "POST",
+        body: { name, position },
+    });
+    const parsedResponse = TaskListResponseSchema.parse(response);
+    return parsedResponse.item;
+}
+
+/**
+ * Deletes a checklist (task-list) by ID
+ *
+ * @param {string} id - The ID of the checklist to delete
+ * @returns {Promise<{success: boolean}>} Success indicator
+ */
+export async function deleteChecklist(id: string) {
+    await plankaRequest(`/api/task-lists/${id}`, {
+        method: "DELETE",
+    });
+    return { success: true };
+}
+
+/**
+ * Finds an existing checklist on a card or creates a new one
+ *
+ * @param {string} cardId - The ID of the card
+ * @param {string} [name="Checklist"] - The desired checklist name
+ * @returns {Promise<string>} The ID of the checklist (taskListId)
+ */
+export async function getOrCreateChecklist(cardId: string, name: string = "Checklist"): Promise<string> {
+    try {
+        const response = await plankaRequest(`/api/cards/${cardId}`) as {
+            item: any;
+            included?: {
+                taskLists?: any[];
+            };
+        };
+
+        const taskLists = response?.included?.taskLists || [];
+        if (taskLists.length > 0) {
+            const matching = taskLists.find(
+                (tl: any) => tl.name && tl.name.toLowerCase() === name.toLowerCase()
+            );
+            if (matching) {
+                return matching.id;
+            }
+            return taskLists[0].id;
+        }
+
+        const createRes: any = await plankaRequest(`/api/cards/${cardId}/task-lists`, {
+            method: "POST",
+            body: { name, position: 65535 },
+        });
+        return createRes.item.id;
+    } catch (error) {
+        throw new Error(
+            `Failed to get or create checklist for card ${cardId}: ${
+                error instanceof Error ? error.message : String(error)
+            }`,
+        );
+    }
+}
+
+/**
+ * Creates a new task (individual step item) inside a card's checklist
+ *
+ * @param {CreateTaskOptions} params - Task creation parameters
  * @returns {Promise<object>} The created task
  */
-export async function createTask(params: {
-    cardId: string;
-    name: string;
-    position?: number;
-}) {
+export async function createTask(params: CreateTaskOptions) {
     try {
-        const { cardId, name, position = 65535 } = params;
+        const { cardId, checklistName, name, position = 65535, isCompleted } = params;
+        let taskListId = params.taskListId;
+
+        if (!taskListId) {
+            if (!cardId) {
+                throw new Error("Either cardId or taskListId is required to create a task");
+            }
+            taskListId = await getOrCreateChecklist(cardId, checklistName || "Checklist");
+        }
 
         const response: any = await plankaRequest(
-            `/api/cards/${cardId}/tasks`,
+            `/api/task-lists/${taskListId}/tasks`,
             {
                 method: "POST",
                 body: { name, position },
             },
         );
 
-        // Store the task ID to card ID mapping for getTask
-        if (response.item && response.item.id) {
-            taskCardIdMap[response.item.id] = cardId;
+        let task = response.item;
+
+        if (task && task.id) {
+            if (cardId) {
+                taskCardIdMap[task.id] = cardId;
+                task.cardId = cardId;
+            }
+            if (isCompleted) {
+                const updated = await updateTask(task.id, { isCompleted: true });
+                task = { ...task, ...updated };
+            }
         }
 
-        return response.item;
+        return task;
     } catch (error) {
         console.error("Error creating task:", error);
         throw new Error(
@@ -149,7 +263,6 @@ export async function createTask(params: {
  *
  * @param {BatchCreateTasksOptions} options - The batch create tasks options
  * @returns {Promise<{results: any[], successes: any[], failures: TaskError[]}>} The results of the batch operation
- * @throws {Error} If the batch operation fails completely
  */
 export async function batchCreateTasks(options: BatchCreateTasksOptions) {
     try {
@@ -157,37 +270,15 @@ export async function batchCreateTasks(options: BatchCreateTasksOptions) {
         const successes: Array<any> = [];
         const failures: Array<any> = [];
 
-        /**
-         * Interface for task operation result
-         * @property {boolean} success - Whether the operation was successful
-         * @property {any} [result] - The result of the operation if successful
-         * @property {object} [error] - The error if the operation failed
-         * @property {string} error.message - The error message
-         */
-        interface TaskResult {
-            success: boolean;
-            result?: any;
-            error?: { message: string };
-        }
-
-        /**
-         * Interface for task operation error
-         * @property {number} index - The index of the task in the original array
-         * @property {CreateTaskOptions} task - The task that failed
-         * @property {string} error - The error message
-         */
         interface TaskError {
             index: number;
             task: CreateTaskOptions;
             error: string;
         }
 
-        // Process each task in sequence
         for (let i = 0; i < options.tasks.length; i++) {
             const task = options.tasks[i];
-
-            // Ensure position is set if not provided
-            if (!task.position) {
+            if (task.position === undefined) {
                 task.position = 65535 * (i + 1);
             }
 
@@ -229,34 +320,36 @@ export async function batchCreateTasks(options: BatchCreateTasksOptions) {
 }
 
 /**
- * Retrieves all tasks for a specific card
+ * Retrieves all tasks for a specific card across all its checklists
  *
  * @param {string} cardId - The ID of the card to get tasks from
  * @returns {Promise<Array<object>>} Array of tasks in the card
  */
 export async function getTasks(cardId: string) {
     try {
-        // Instead of using the tasks endpoint which returns HTML,
-        // we'll get the card details which includes tasks
         const response = await plankaRequest(`/api/cards/${cardId}`) as {
             item: any;
             included?: {
+                taskLists?: any[];
                 tasks?: any[];
             };
         };
 
-        // Extract tasks from the card response
-        if (
-            response?.included?.tasks && Array.isArray(response.included.tasks)
-        ) {
-            const tasks = response.included.tasks;
-            return tasks;
-        }
+        const taskLists = response?.included?.taskLists || [];
+        const taskListIdSet = new Set(taskLists.map((tl: any) => tl.id));
+        const tasks = (response?.included?.tasks || [])
+            .filter((t: any) => taskListIdSet.has(t.taskListId) || t.cardId === cardId)
+            .map((t: any) => {
+                taskCardIdMap[t.id] = cardId;
+                return {
+                    ...t,
+                    cardId,
+                };
+            });
 
-        return [];
+        return tasks;
     } catch (error) {
         console.error(`Error getting tasks for card ${cardId}:`, error);
-        // If there's an error, return an empty array
         return [];
     }
 }
@@ -270,42 +363,28 @@ export async function getTasks(cardId: string) {
  */
 export async function getTask(id: string, cardId?: string) {
     try {
-        // Tasks in Planka are always part of a card, so we need the card ID
         const taskCardId = cardId || taskCardIdMap[id];
 
-        if (!taskCardId) {
-            throw new Error(
-                "Card ID is required to get a task. Either provide it directly or create the task first.",
-            );
+        if (taskCardId) {
+            const cardTasks = await getTasks(taskCardId);
+            const found = cardTasks.find((task: any) => task.id === id);
+            if (found) {
+                return found;
+            }
         }
 
-        // Get the card details which includes tasks
-        const response = await plankaRequest(`/api/cards/${taskCardId}`) as {
-            item: any;
-            included?: {
-                tasks?: any[];
-            };
-        };
-
-        if (
-            !response?.included?.tasks ||
-            !Array.isArray(response.included.tasks)
-        ) {
-            throw new Error(`Failed to get tasks for card ${taskCardId}`);
+        try {
+            const response = await plankaRequest(`/api/tasks/${id}`) as any;
+            if (response && response.item) {
+                return response.item;
+            }
+        } catch {
+            // Direct endpoint not available or item not found directly
         }
 
-        // Find the task with the matching ID
-        const task = response.included.tasks.find((task: any) =>
-            task.id === id
+        throw new Error(
+            `Task with ID ${id} not found${taskCardId ? ` in card ${taskCardId}` : ". Card ID is required to locate the task."}`,
         );
-
-        if (!task) {
-            throw new Error(
-                `Task with ID ${id} not found in card ${taskCardId}`,
-            );
-        }
-
-        return task;
     } catch (error) {
         console.error(`Error getting task with ID ${id}:`, error);
         throw new Error(
@@ -346,4 +425,88 @@ export async function deleteTask(id: string) {
         method: "DELETE",
     });
     return { success: true };
+}
+
+/**
+ * Synchronizes tasks that reference a completed card by marking them as completed (isCompleted: true).
+ * Searches all cards on the board for any task referencing `completedCardId` in its name.
+ *
+ * @param {string} completedCardId - The ID of the card that was completed / moved to Done
+ * @param {string} [boardId] - The ID of the board containing the cards and tasks
+ * @returns {Promise<Array<object>>} Array of updated tasks
+ */
+export async function syncReferencedTasksOnCardDone(
+    completedCardId: string,
+    boardId?: string,
+) {
+    try {
+        let targetBoardId = boardId;
+
+        // If boardId is not provided, attempt to resolve it from the card
+        if (!targetBoardId) {
+            try {
+                const cardResponse = await plankaRequest(`/api/cards/${completedCardId}`);
+                if (cardResponse && typeof cardResponse === "object" && "item" in cardResponse) {
+                    const card = (cardResponse as any).item;
+                    if (card.boardId) {
+                        targetBoardId = card.boardId;
+                    } else if (card.listId) {
+                        const listResponse = await plankaRequest(`/api/lists/${card.listId}`);
+                        if (listResponse && typeof listResponse === "object" && "item" in listResponse) {
+                            targetBoardId = (listResponse as any).item.boardId;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error(`Could not resolve boardId for card ${completedCardId}:`, e);
+            }
+        }
+
+        if (!targetBoardId) {
+            return [];
+        }
+
+        // Get board lists
+        const listsResponse = await plankaRequest(`/api/boards/${targetBoardId}/lists`);
+        const lists = Array.isArray(listsResponse)
+            ? listsResponse
+            : (listsResponse as any)?.items || [];
+
+        const updatedTasks: any[] = [];
+
+        // For each list on the board, inspect cards and their tasks
+        for (const list of lists) {
+            const cardsResponse = await plankaRequest(`/api/lists/${list.id}/cards`);
+            const cards = Array.isArray(cardsResponse)
+                ? cardsResponse
+                : (cardsResponse as any)?.items || [];
+
+            for (const card of cards) {
+                // Skip the completed card itself
+                if (card.id === completedCardId) continue;
+
+                try {
+                    const cardTasks = await getTasks(card.id);
+                    for (const task of cardTasks) {
+                        // If task is not completed and references the completedCardId in its name
+                        if (!task.isCompleted && task.name && task.name.includes(completedCardId)) {
+                            const updated = await updateTask(task.id, {
+                                name: task.name,
+                                position: task.position,
+                                isCompleted: true,
+                            } as any);
+                            updatedTasks.push(updated);
+                        }
+                    }
+                } catch (taskErr) {
+                    console.error(`Error checking tasks for card ${card.id}:`, taskErr);
+                }
+            }
+        }
+
+        return updatedTasks;
+    } catch (error) {
+        console.error(`Error syncing referenced tasks for card ${completedCardId}:`, error);
+        return [];
+    }
 }

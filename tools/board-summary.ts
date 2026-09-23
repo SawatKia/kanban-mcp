@@ -16,7 +16,7 @@ import { getComments } from "../operations/comments.js";
 export const getBoardSummarySchema = z.object({
     boardId: z.string().describe("The ID of the board to get a summary for"),
     includeTaskDetails: z.boolean().optional().default(false).describe(
-        "Whether to include detailed task information for each card",
+        "Whether to include detailed task / checklist item information (sub-tasks with isCompleted status across card task-lists) for each card",
     ),
     includeComments: z.boolean().optional().default(false).describe(
         "Whether to include comments for each card",

@@ -17,13 +17,13 @@ export const createCardWithTasksSchema = z.object({
     name: z.string().describe("The name of the card"),
     description: z.string().optional().describe("The description of the card"),
     tasks: z.array(z.string()).optional().describe(
-        "Array of task descriptions to create",
+        "Array of task (checklist step item) names to create inside the card's checklist",
     ),
     comment: z.string().optional().describe(
         "Optional comment to add to the card",
     ),
     position: z.number().optional().describe(
-        "Optional position for the card in the list",
+        "Optional vertical position for the card in the list column (default: 65535). Lower numbers = higher up / top, higher numbers = lower down / bottom.",
     ),
 });
 
