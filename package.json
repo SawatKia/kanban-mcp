@@ -31,7 +31,7 @@
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testMatch='**/tests/integration.test.ts'"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@types/node": "^22",
     "@types/node-fetch": "^2.6.12",
     "node-fetch": "^3.3.2",
